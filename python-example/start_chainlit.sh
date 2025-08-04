@@ -70,20 +70,25 @@ show_usage() {
     echo "Usage: $0 [OPTION]"
     echo ""
     echo "Options:"
-    echo "  basic     - Start basic Chainlit app (default)"
+    echo "  basic     - Start basic Chainlit app"
     echo "  advanced  - Start advanced Chainlit app with data visualization"
+    echo "  enhanced  - Start enhanced app (may have HTML rendering issues)"
+    echo "  simple    - Start simple app (text-based, reliable) - RECOMMENDED"
+    echo "  elements  - Start elements app (uses Chainlit elements)"
     echo "  help      - Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0              # Start basic app"
+    echo "  $0              # Start simple app (recommended)"
+    echo "  $0 simple       # Start simple app"
     echo "  $0 basic        # Start basic app"
     echo "  $0 advanced     # Start advanced app"
+    echo "  $0 elements     # Start elements app"
     echo ""
     echo "The app will be available at http://localhost:8000"
 }
 
 # Main script
-case "${1:-basic}" in
+case "${1:-simple}" in
     basic)
         print_status "Starting basic Chainlit app..."
         print_status "App will be available at http://localhost:8000"
@@ -97,6 +102,27 @@ case "${1:-basic}" in
         print_status "Press Ctrl+C to stop"
         echo ""
         chainlit run chainlit_advanced_app.py
+        ;;
+    enhanced)
+        print_status "Starting enhanced Chainlit app (may have HTML rendering issues)..."
+        print_status "App will be available at http://localhost:8000"
+        print_status "Press Ctrl+C to stop"
+        echo ""
+        chainlit run chainlit_enhanced_app.py
+        ;;
+    simple)
+        print_status "Starting simple Chainlit app (text-based, reliable)..."
+        print_status "App will be available at http://localhost:8000"
+        print_status "Press Ctrl+C to stop"
+        echo ""
+        chainlit run chainlit_simple_app.py
+        ;;
+    elements)
+        print_status "Starting elements Chainlit app (uses Chainlit elements)..."
+        print_status "App will be available at http://localhost:8000"
+        print_status "Press Ctrl+C to stop"
+        echo ""
+        chainlit run chainlit_elements_app.py
         ;;
     help|-h)
         show_usage
