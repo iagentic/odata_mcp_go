@@ -73,12 +73,14 @@ show_usage() {
     echo "  basic     - Start basic Chainlit app"
     echo "  advanced  - Start advanced Chainlit app with data visualization"
     echo "  enhanced  - Start enhanced app (may have HTML rendering issues)"
-    echo "  simple    - Start simple app (text-based, reliable) - RECOMMENDED"
+    echo "  simple    - Start simple app (text-based, reliable)"
     echo "  elements  - Start elements app (uses Chainlit elements)"
+    echo "  markdown  - Start markdown app (structured + raw JSON) - RECOMMENDED"
     echo "  help      - Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0              # Start simple app (recommended)"
+    echo "  $0              # Start markdown app (recommended)"
+    echo "  $0 markdown     # Start markdown app"
     echo "  $0 simple       # Start simple app"
     echo "  $0 basic        # Start basic app"
     echo "  $0 advanced     # Start advanced app"
@@ -88,7 +90,7 @@ show_usage() {
 }
 
 # Main script
-case "${1:-simple}" in
+case "${1:-markdown}" in
     basic)
         print_status "Starting basic Chainlit app..."
         print_status "App will be available at http://localhost:8000"
@@ -123,6 +125,13 @@ case "${1:-simple}" in
         print_status "Press Ctrl+C to stop"
         echo ""
         chainlit run chainlit_elements_app.py
+        ;;
+    markdown)
+        print_status "Starting markdown Chainlit app (structured + raw JSON)..."
+        print_status "App will be available at http://localhost:8000"
+        print_status "Press Ctrl+C to stop"
+        echo ""
+        chainlit run chainlit_markdown_app.py
         ;;
     help|-h)
         show_usage

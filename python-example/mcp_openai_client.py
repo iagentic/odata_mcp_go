@@ -172,7 +172,7 @@ class MCPOpenAIClient:
             descriptions.append(desc)
         return "\n".join(descriptions)
     
-    def query_with_openai(self, user_query: str, model: str = "gpt-4") -> str:
+    def query_with_openai(self, user_query: str, model: str = "gpt-4.1-mini") -> str:
         """Use OpenAI to process a natural language query and execute appropriate MCP tools"""
         
         # Create system prompt with available tools
@@ -318,7 +318,7 @@ def main():
                        help="MCP server URL")
     parser.add_argument("--openai-key", help="OpenAI API key")
     parser.add_argument("--query", help="Single query to execute")
-    parser.add_argument("--model", default="gpt-4", help="OpenAI model to use")
+    parser.add_argument("--model", default="gpt-4.1-mini", help="OpenAI model to use")
     
     args = parser.parse_args()
     

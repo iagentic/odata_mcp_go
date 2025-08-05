@@ -80,6 +80,7 @@ const (
 	UserAgent     = "User-Agent"
 	IfMatch       = "If-Match"
 	IfNoneMatch   = "If-None-Match"
+	APIKeyHeader  = "apikey"
 )
 
 // Content types

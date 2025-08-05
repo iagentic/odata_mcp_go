@@ -40,10 +40,18 @@ func NewODataMCPBridge(cfg *config.Config) (*ODataMCPBridge, error) {
 	// Create OData client
 	odataClient := client.NewODataClient(cfg.ServiceURL, cfg.Verbose)
 
-	// Configure authentication
+	// Set authentication if configured
 	if cfg.HasBasicAuth() {
 		odataClient.SetBasicAuth(cfg.Username, cfg.Password)
-	} else if cfg.HasCookieAuth() {
+	}
+
+	// Set API key if configured
+	if cfg.HasAPIKey() {
+		odataClient.SetAPIKey(cfg.APIKey)
+	}
+
+	// Set cookies if configured
+	if cfg.HasCookieAuth() {
 		odataClient.SetCookies(cfg.Cookies)
 	}
 

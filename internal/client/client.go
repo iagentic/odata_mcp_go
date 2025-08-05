@@ -24,6 +24,7 @@ type ODataClient struct {
 	cookies        map[string]string
 	username       string
 	password       string
+	apiKey         string
 	csrfToken      string
 	verbose        bool
 	sessionCookies []*http.Cookie // Track session cookies from server
@@ -66,6 +67,11 @@ func (c *ODataClient) SetCookies(cookies map[string]string) {
 	c.cookies = cookies
 }
 
+// SetAPIKey configures API key authentication
+func (c *ODataClient) SetAPIKey(apiKey string) {
+	c.apiKey = apiKey
+}
+
 // buildRequest creates an HTTP request with proper headers and authentication
 func (c *ODataClient) buildRequest(ctx context.Context, method, endpoint string, body io.Reader) (*http.Request, error) {
 	fullURL := c.baseURL + strings.TrimPrefix(endpoint, "/")
@@ -86,6 +92,11 @@ func (c *ODataClient) buildRequest(ctx context.Context, method, endpoint string,
 	// Set authentication
 	if c.username != "" && c.password != "" {
 		req.SetBasicAuth(c.username, c.password)
+	}
+
+	// Set API key
+	if c.apiKey != "" {
+		req.Header.Set(constants.APIKeyHeader, c.apiKey)
 	}
 
 	// Set cookies

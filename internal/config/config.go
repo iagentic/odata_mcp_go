@@ -16,6 +16,7 @@ type Config struct {
 	// Authentication
 	Username     string            `mapstructure:"username"`
 	Password     string            `mapstructure:"password"`
+	APIKey       string            `mapstructure:"api_key"`
 	CookieFile   string            `mapstructure:"cookie_file"`
 	CookieString string            `mapstructure:"cookie_string"`
 	Cookies      map[string]string // Parsed cookies
@@ -68,6 +69,11 @@ type Config struct {
 // HasBasicAuth returns true if username and password are configured
 func (c *Config) HasBasicAuth() bool {
 	return c.Username != "" && c.Password != ""
+}
+
+// HasAPIKey returns true if API key is configured
+func (c *Config) HasAPIKey() bool {
+	return c.APIKey != ""
 }
 
 // HasCookieAuth returns true if cookies are configured
