@@ -39,6 +39,7 @@ Examples:
   odata-mcp https://services.odata.org/V2/Northwind/Northwind.svc/
   odata-mcp --service https://my-sap-service.com/sap/opu/odata/sap/SERVICE_NAME/
   odata-mcp --user admin --password secret https://my-service.com/odata/
+  odata-mcp --api-key W4P3bPnpzGGrAPXPl2DQGweAKQlAcKga https://sandbox.api.sap.com/sap/c4c/odata/v1/c4codataapi/
   odata-mcp --cookie-file cookies.txt https://my-service.com/odata/
   
 Operation Filtering Examples:
@@ -63,6 +64,8 @@ func init() {
 	rootCmd.Flags().StringVarP(&cfg.Username, "user", "u", "", "Username for basic authentication (overrides ODATA_USERNAME env var)")
 	rootCmd.Flags().StringVarP(&cfg.Password, "password", "p", "", "Password for basic authentication (overrides ODATA_PASSWORD env var)")
 	rootCmd.Flags().StringVar(&cfg.Password, "pass", "", "Password for basic authentication (alias for --password)")
+	rootCmd.Flags().StringVar(&cfg.APIKey, "api-key", "", "API key for authentication (overrides ODATA_API_KEY env var)")
+	rootCmd.Flags().StringVar(&cfg.APIKey, "apikey", "", "API key for authentication (alias for --api-key)")
 	rootCmd.Flags().StringVar(&cfg.CookieFile, "cookie-file", "", "Path to cookie file in Netscape format")
 	rootCmd.Flags().StringVar(&cfg.CookieString, "cookie-string", "", "Cookie string (key1=val1; key2=val2)")
 
@@ -396,6 +399,9 @@ func processAuthentication(cfg *config.Config) error {
 	if cfg.Username != "" {
 		authMethods++
 	}
+	if cfg.APIKey != "" {
+		authMethods++
+	}
 
 	if authMethods > 1 {
 		return fmt.Errorf("only one authentication method can be used at a time")
@@ -440,6 +446,13 @@ func processAuthentication(cfg *config.Config) error {
 			cfg.Password = viper.GetString("PASS")
 			if cfg.Password == "" {
 				cfg.Password = viper.GetString("PASSWORD")
+			}
+		}
+
+		if cfg.APIKey == "" {
+			cfg.APIKey = viper.GetString("API_KEY")
+			if cfg.APIKey == "" {
+				cfg.APIKey = viper.GetString("APIKEY")
 			}
 		}
 

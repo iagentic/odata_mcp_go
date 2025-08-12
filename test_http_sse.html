@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OData MCP HTTP/SSE Test Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .test-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            background-color: #f8f9fa;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 5px;
+            border-left: 3px solid #007bff;
+            background-color: white;
+        }
+        .error {
+            border-left-color: #dc3545;
+        }
+        .request {
+            border-left-color: #28a745;
+        }
+        .success {
+            border-left-color: #28a745;
+        }
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        .input-group label {
+            display: inline-block;
+            width: 120px;
+            font-weight: bold;
+        }
+        .input-group input, .input-group select {
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+        .endpoint-info {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>OData MCP HTTP/SSE Test Client</h1>
+        
+        <div class="endpoint-info">
+            <h3>Available Endpoints:</h3>
+            <ul>
+                <li><strong>GET /health</strong> - Health check endpoint</li>
+                <li><strong>GET /sse</strong> - Server-Sent Events endpoint for real-time communication</li>
+                <li><strong>POST /rpc</strong> - JSON-RPC endpoint for request/response communication</li>
+            </ul>
+        </div>
+        
+        <div id="status" class="status disconnected">
+            Disconnected
+        </div>
+        
+        <div class="controls">
+            <button id="connect" onclick="connect()">Connect SSE</button>
+            <button id="disconnect" onclick="disconnect()" disabled>Disconnect</button>
+            <button id="testHealth" onclick="testHealth()">Test Health</button>
+            <button id="initialize" onclick="sendInitialize()" disabled>Initialize</button>
+            <button id="listTools" onclick="sendListTools()" disabled>List Tools</button>
+            <button id="testTool" onclick="testToolCall()" disabled>Test Tool Call</button>
+            <button id="clear" onclick="clearMessages()">Clear Messages</button>
+        </div>
+        
+        <div class="test-section">
+            <h3>Tool Call Test</h3>
+            <div class="input-group">
+                <label for="toolName">Tool Name:</label>
+                <input type="text" id="toolName" value="filter_Alphabetical_list_of_products_for_NorthSvc" placeholder="Enter tool name">
+            </div>
+            <div class="input-group">
+                <label for="toolParams">Parameters (JSON):</label>
+                <input type="text" id="toolParams" value='{"$top": 5}' placeholder='{"$top": 5}'>
+            </div>
+        </div>
+        
+        <h3>Messages:</h3>
+        <div id="messages" class="messages"></div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let messageId = 1;
+        let clientId = null;
+        const serverUrl = 'http://localhost:8080';
+
+        function addMessage(content, type = 'message') {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const pre = document.createElement('pre');
+            pre.textContent = `[${timestamp}] ${typeof content === 'string' ? content : JSON.stringify(content, null, 2)}`;
+            messageDiv.appendChild(pre);
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function updateStatus(connected) {
+            const statusDiv = document.getElementById('status');
+            const connectBtn = document.getElementById('connect');
+            const disconnectBtn = document.getElementById('disconnect');
+            const initializeBtn = document.getElementById('initialize');
+            const listToolsBtn = document.getElementById('listTools');
+            const testToolBtn = document.getElementById('testTool');
+            const testHealthBtn = document.getElementById('testHealth');
+            
+            if (connected) {
+                statusDiv.className = 'status connected';
+                statusDiv.textContent = `Connected${clientId ? ' (Client ID: ' + clientId + ')' : ''}`;
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                initializeBtn.disabled = false;
+                listToolsBtn.disabled = false;
+                testToolBtn.disabled = false;
+                testHealthBtn.disabled = false;
+            } else {
+                statusDiv.className = 'status disconnected';
+                statusDiv.textContent = 'Disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                initializeBtn.disabled = true;
+                listToolsBtn.disabled = true;
+                testToolBtn.disabled = true;
+                testHealthBtn.disabled = false;
+                clientId = null;
+            }
+        }
+
+        function connect() {
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            addMessage('Connecting to SSE endpoint...', 'request');
+            
+            eventSource = new EventSource(`${serverUrl}/sse`);
+            
+            eventSource.onopen = function(event) {
+                addMessage('SSE connection established', 'success');
+                updateStatus(true);
+            };
+            
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    // Handle connection event
+                    if (data.type === 'connected' && data.data && data.data.clientId) {
+                        clientId = data.data.clientId;
+                        updateStatus(true);
+                        addMessage(`Connected with client ID: ${clientId}`, 'success');
+                    } else {
+                        addMessage(data, 'message');
+                    }
+                } catch (e) {
+                    addMessage(`Raw message: ${event.data}`, 'message');
+                }
+            };
+            
+            eventSource.onerror = function(error) {
+                addMessage('SSE connection error occurred', 'error');
+                updateStatus(false);
+                if (eventSource.readyState === EventSource.CLOSED) {
+                    addMessage('SSE connection closed', 'error');
+                }
+            };
+        }
+
+        function disconnect() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+                addMessage('Disconnected from SSE', 'message');
+                updateStatus(false);
+            }
+        }
+
+        async function testHealth() {
+            addMessage('Testing health endpoint...', 'request');
+            
+            try {
+                const response = await fetch(`${serverUrl}/health`);
+                const data = await response.json();
+                addMessage(`Health check response: ${JSON.stringify(data, null, 2)}`, 'success');
+            } catch (error) {
+                addMessage(`Health check error: ${error.message}`, 'error');
+            }
+        }
+
+        async function sendMessage(message) {
+            addMessage(`Sending RPC request: ${JSON.stringify(message, null, 2)}`, 'request');
+            
+            try {
+                const response = await fetch(`${serverUrl}/rpc`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(message)
+                });
+                
+                const data = await response.json();
+                addMessage(`RPC response: ${JSON.stringify(data, null, 2)}`, 'message');
+                return data;
+            } catch (error) {
+                addMessage(`RPC error: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        function sendInitialize() {
+            sendMessage({
+                jsonrpc: "2.0",
+                id: messageId++,
+                method: "initialize",
+                params: {
+                    protocolVersion: "0.1.0",
+                    capabilities: {},
+                    clientInfo: {
+                        name: "HTTP Test Client",
+                        version: "1.0.0"
+                    }
+                }
+            });
+        }
+
+        function sendListTools() {
+            sendMessage({
+                jsonrpc: "2.0",
+                id: messageId++,
+                method: "tools/list",
+                params: {}
+            });
+        }
+
+        async function testToolCall() {
+            const toolName = document.getElementById('toolName').value;
+            const paramsText = document.getElementById('toolParams').value;
+            
+            if (!toolName) {
+                addMessage('Please enter a tool name', 'error');
+                return;
+            }
+            
+            let params = {};
+            if (paramsText) {
+                try {
+                    params = JSON.parse(paramsText);
+                } catch (e) {
+                    addMessage(`Invalid JSON parameters: ${e.message}`, 'error');
+                    return;
+                }
+            }
+            
+            sendMessage({
+                jsonrpc: "2.0",
+                id: messageId++,
+                method: "tools/call",
+                params: {
+                    name: toolName,
+                    arguments: params
+                }
+            });
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+
+        // Auto-connect on page load
+        window.onload = function() {
+            addMessage('HTTP/SSE Test Client loaded. Click "Connect SSE" to start testing.', 'message');
+        };
+
+        // Clean up on page unload
+        window.onbeforeunload = function() {
+            if (eventSource) {
+                eventSource.close();
+            }
+        };
+    </script>
+</body>
+</html> 

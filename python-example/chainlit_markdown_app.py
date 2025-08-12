@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+"""
+Chainlit Markdown Web Application for OData MCP OpenAI Client
+
+Uses markdown formatting for reliable data display with both structured content and raw JSON.
+"""
+
+import chainlit as cl
+import os
+import json
+import asyncio
+import pandas as pd
+from typing import Dict, Any, Optional, List
+from mcp_openai_client import MCPOpenAIClient
+import re
+
+# Global client instance
+mcp_client: Optional[MCPOpenAIClient] = None
+
+def parse_json_data(data_str: str) -> Optional[Dict]:
+    """Parse JSON data from OData response"""
+    try:
+        # Extract JSON from the response
+        json_match = re.search(r'\{.*\}', data_str, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group())
+        return None
+    except:
+        return None
+
+def create_dataframe(data: Dict) -> Optional[pd.DataFrame]:
+    """Create a pandas DataFrame from OData response"""
+    try:
+        if 'value' in data and isinstance(data['value'], list):
+            df = pd.DataFrame(data['value'])
+            return df
+        return None
+    except:
+        return None
+
+def create_markdown_table(df: pd.DataFrame, max_rows: int = 20) -> str:
+    """Create a markdown table from DataFrame"""
+    if df.empty:
+        return "No data available"
+    
+    # Get column names
+    columns = list(df.columns)
+    
+    # Create header
+    header = "| " + " | ".join(str(col) for col in columns) + " |"
+    separator = "| " + " | ".join("---" for _ in columns) + " |"
+    
+    # Create rows with safe value conversion
+    rows = []
+    for idx, row in df.head(max_rows).iterrows():
+        row_values = []
+        for val in row.values:
+            if isinstance(val, dict):
+                # Handle OData deferred objects
+                if '__deferred' in val:
+                    row_values.append("🔗 Deferred")
+                else:
+                    row_values.append("📦 Object")
+            else:
+                row_values.append(str(val))
+        
+        row_str = "| " + " | ".join(row_values) + " |"
+        rows.append(row_str)
+    
+    # Combine all parts
+    result = f"""
+## 📊 Data Table ({len(df.head(max_rows))} of {len(df)} records)
+
+{header}
+{separator}
+"""
+    result += "\n".join(rows)
+    
+    return result
+
+def create_markdown_summary(df: pd.DataFrame) -> str:
+    """Create markdown summary of DataFrame"""
+    result = f"""
+## 📈 Data Summary
+
+| Metric | Value |
+|--------|-------|
+| **Total Records** | {len(df)} |
+| **Columns** | {len(df.columns)} |
+| **Sample Columns** | {', '.join(df.columns[:5])}{'...' if len(df.columns) > 5 else ''} |
+
+### 📋 Column Details
+
+| Column | Data Type | Sample Values |
+|--------|-----------|---------------|
+"""
+    # Add column details
+    for col in df.columns[:10]:  # Show first 10 columns
+        try:
+            # Handle different data types safely
+            sample_values = df[col].dropna().head(3).tolist()
+            
+            # Convert complex objects to strings
+            sample_str_parts = []
+            for val in sample_values:
+                if isinstance(val, dict):
+                    # Handle OData deferred objects
+                    if '__deferred' in val:
+                        sample_str_parts.append("OData Deferred")
+                    else:
+                        sample_str_parts.append("Complex Object")
+                else:
+                    sample_str_parts.append(str(val))
+            
+            sample_str = ", ".join(sample_str_parts)
+            if len(sample_str) > 50:
+                sample_str = sample_str[:47] + "..."
+            
+            result += f"| {col} | {df[col].dtype} | {sample_str} |\n"
+        except Exception as e:
+            # Fallback for problematic columns
+            result += f"| {col} | {df[col].dtype} | Error processing |\n"
+    
+    return result
+
+def create_markdown_statistics(df: pd.DataFrame) -> str:
+    """Create markdown statistics section"""
+    stats = []
+    
+    # Numeric columns statistics
+    numeric_cols = df.select_dtypes(include=['number']).columns
+    if len(numeric_cols) > 0:
+        stats.append("### 📊 Numeric Statistics")
+        stats.append("")
+        stats.append("| Column | Min | Max | Mean | Median |")
+        stats.append("|--------|-----|-----|------|--------|")
+        
+        for col in numeric_cols[:5]:  # Show first 5 numeric columns
+            try:
+                stats.append(f"| {col} | {df[col].min():.2f} | {df[col].max():.2f} | {df[col].mean():.2f} | {df[col].median():.2f} |")
+            except Exception as e:
+                stats.append(f"| {col} | Error | Error | Error | Error |")
+    
+    # Categorical columns statistics
+    categorical_cols = df.select_dtypes(include=['object']).columns
+    if len(categorical_cols) > 0:
+        stats.append("")
+        stats.append("### 📋 Categorical Statistics")
+        stats.append("")
+        stats.append("| Column | Unique Values | Most Common |")
+        stats.append("|--------|---------------|-------------|")
+        
+        for col in categorical_cols[:5]:  # Show first 5 categorical columns
+            try:
+                # Handle complex objects safely
+                unique_count = df[col].nunique()
+                
+                # Find most common value safely
+                try:
+                    mode_values = df[col].mode()
+                    if len(mode_values) > 0:
+                        most_common = mode_values.iloc[0]
+                        if isinstance(most_common, dict):
+                            if '__deferred' in most_common:
+                                most_common = "OData Deferred"
+                            else:
+                                most_common = "Complex Object"
+                        else:
+                            most_common = str(most_common)
+                    else:
+                        most_common = "N/A"
+                except Exception:
+                    most_common = "Error"
+                
+                stats.append(f"| {col} | {unique_count} | {most_common} |")
+            except Exception as e:
+                stats.append(f"| {col} | Error | Error |")
+    
+    return "\n".join(stats)
+
+def format_tool_info(tools: List) -> str:
+    """Format tool information for display"""
+    categories = {
+        'filter': [],
+        'count': [],
+        'get': [],
+        'search': [],
+        'create': [],
+        'update': [],
+        'delete': [],
+        'other': []
+    }
+    
+    for tool in tools:
+        name = tool.name.lower()
+        if 'filter' in name:
+            categories['filter'].append(tool)
+        elif 'count' in name:
+            categories['count'].append(tool)
+        elif 'get' in name:
+            categories['get'].append(tool)
+        elif 'search' in name:
+            categories['search'].append(tool)
+        elif 'create' in name:
+            categories['create'].append(tool)
+        elif 'update' in name:
+            categories['update'].append(tool)
+        elif 'delete' in name:
+            categories['delete'].append(tool)
+        else:
+            categories['other'].append(tool)
+    
+    result = []
+    for category, tools_list in categories.items():
+        if tools_list:
+            result.append(f"**{category.title()} Operations ({len(tools_list)}):**")
+            for tool in tools_list[:3]:  # Show first 3 tools per category
+                result.append(f"- {tool.name}")
+            if len(tools_list) > 3:
+                result.append(f"- ... and {len(tools_list) - 3} more")
+            result.append("")
+    
+    return "\n".join(result)
+
+@cl.on_chat_start
+async def start():
+    """Initialize the chat session"""
+    global mcp_client
+    
+    # Check for OpenAI API key
+    if not os.getenv('OPENAI_API_KEY'):
+        await cl.Message(
+            content="❌ **OpenAI API key required!**\n\n"
+                   "Please set the `OPENAI_API_KEY` environment variable or provide it in the settings."
+        ).send()
+        return
+    
+    # Create MCP client
+    mcp_client = MCPOpenAIClient()
+    
+    # Initialize MCP connection
+    init_msg = cl.Message(content="🔄 **Initializing connection to OData MCP server...**")
+    await init_msg.send()
+    
+    if not mcp_client.initialize_mcp():
+        init_msg.content = (
+            "❌ **Failed to connect to MCP server!**\n\n"
+            "Please ensure the OData MCP server is running:\n"
+            "```bash\n"
+            "./odata-mcp --transport http https://services.odata.org/V2/Northwind/Northwind.svc/\n"
+            "```"
+        )
+        await init_msg.update()
+        return
+    
+    # Show available tools
+    tool_count = len(mcp_client.tools)
+    tool_info = format_tool_info(mcp_client.tools)
+    
+    init_msg.content = (
+        f"✅ **Connected successfully!**\n\n"
+        f"📊 **Loaded {tool_count} tools** from the OData service\n\n"
+        f"{tool_info}"
+        f"💬 **Try asking questions like:**\n"
+        f"- \"Show me the first 5 products\"\n"
+        f"- \"Find products with price less than 20\"\n"
+        f"- \"Get information about categories\"\n"
+        f"- \"How many products are there?\"\n"
+        f"- \"Show me products from the Beverages category\"\n"
+        f"- \"Create a table of products with their prices\""
+    )
+    await init_msg.update()
+
+@cl.on_message
+async def main(message: cl.Message):
+    """Handle incoming messages"""
+    global mcp_client
+    
+    if not mcp_client or not mcp_client.initialized:
+        await cl.Message(
+            content="❌ **Client not initialized!** Please restart the chat."
+        ).send()
+        return
+    
+    # Show processing message
+    processing_msg = cl.Message(content="🔄 **Processing your query...**")
+    await processing_msg.send()
+    
+    try:
+        # Process query with OpenAI
+        result = mcp_client.query_with_openai(message.content)
+        
+        # Try to parse and visualize the data
+        parsed_data = parse_json_data(result)
+        
+        if parsed_data:
+            df = create_dataframe(parsed_data)
+            
+            if df is not None and not df.empty:
+                # Create enhanced data display using markdown
+                processing_msg.content = "📊 **Data retrieved successfully!**"
+                await processing_msg.update()
+                
+                try:
+                    # Show summary using markdown
+                    summary_md = create_markdown_summary(df)
+                    await cl.Message(content=summary_md).send()
+                    
+                    # Show statistics using markdown
+                    stats_md = create_markdown_statistics(df)
+                    if stats_md.strip():
+                        await cl.Message(content=stats_md).send()
+                    
+                    # Show data table using markdown
+                    table_md = create_markdown_table(df)
+                    await cl.Message(content=table_md).send()
+                    
+                    # If there are more records, show a note
+                    if len(df) > 20:
+                        await cl.Message(
+                            content=f"📝 **Note:** Showing first 20 of {len(df)} records. Use specific filters to see more data."
+                        ).send()
+                    
+                    # Show export information
+                    await cl.Message(
+                        content=f"📥 **Export Options:**\n"
+                               f"• Copy the markdown table above and paste into any markdown editor\n"
+                               f"• Use the raw JSON below for API integration\n"
+                               f"• Convert markdown to CSV using online tools"
+                    ).send()
+                    
+                    # Show raw JSON for debugging (full response)
+                    debug_text = f"🔍 **Raw JSON Response:**\n```json\n{json.dumps(parsed_data, indent=2)}\n```"
+                    await cl.Message(content=debug_text).send()
+                    
+                except Exception as e:
+                    # Fallback for processing errors
+                    await cl.Message(
+                        content=f"⚠️ **Processing Warning:** Some data could not be displayed properly due to complex object types.\n\n"
+                               f"**Error:** {str(e)}\n\n"
+                               f"**Raw Data Available:** The raw JSON below contains the complete data."
+                    ).send()
+                    
+                    # Show raw JSON as fallback
+                    debug_text = f"🔍 **Raw JSON Response:**\n```json\n{json.dumps(parsed_data, indent=2)}\n```"
+                    await cl.Message(content=debug_text).send()
+                
+            else:
+                # No structured data, show raw result
+                processing_msg.content = f"📊 **Result:**\n\n```json\n{result}\n```"
+                await processing_msg.update()
+        else:
+            # No JSON data found, show raw result
+            processing_msg.content = f"📊 **Result:**\n\n```json\n{result}\n```"
+            await processing_msg.update()
+        
+    except Exception as e:
+        processing_msg.content = f"❌ **Error:** {str(e)}"
+        await processing_msg.update()
+
+# Chainlit configuration - using compatible API
+# Note: set_page_config and set_settings are not available in all Chainlit versions
+# The app will work without these configurations 
