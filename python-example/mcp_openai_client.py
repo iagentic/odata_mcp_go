@@ -18,6 +18,9 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from openai import OpenAI
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 @dataclass
 class MCPTool:

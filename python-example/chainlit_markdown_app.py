@@ -13,6 +13,9 @@ import pandas as pd
 from typing import Dict, Any, Optional, List
 from mcp_openai_client import MCPOpenAIClient
 import re
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Global client instance
 mcp_client: Optional[MCPOpenAIClient] = None
