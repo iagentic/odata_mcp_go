@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"strings"
 	"sync"
 
@@ -199,13 +200,19 @@ func (s *Server) createErrorResponse(id interface{}, code int, message, data str
 		idBytes, _ = json.Marshal(id)
 	}
 
+	// Properly marshal the error data
+	var dataBytes json.RawMessage
+	if data != "" {
+		dataBytes, _ = json.Marshal(data)
+	}
+
 	return &transport.Message{
 		JSONRPC: "2.0",
 		ID:      idBytes,
 		Error: &transport.Error{
 			Code:    code,
 			Message: message,
-			Data:    json.RawMessage(fmt.Sprintf(`"%s"`, data)),
+			Data:    dataBytes,
 		},
 	}
 }
@@ -293,33 +300,37 @@ func (s *Server) handleToolsListV2(req *Request) (*transport.Message, error) {
 	return s.createResponse(req.ID, result)
 }
 
-// handleToolsCallV2 handles the tools/call request for transport
+// handleToolsCallV2 handles tools/call requests for transport
 func (s *Server) handleToolsCallV2(req *Request) (*transport.Message, error) {
-	params, ok := req.Params["arguments"].(map[string]interface{})
+	fmt.Fprintf(os.Stderr, "[DEBUG] handleToolsCallV2: received request with ID %v\n", req.ID)
+	fmt.Fprintf(os.Stderr, "[DEBUG] handleToolsCallV2: request params: %+v\n", req.Params)
+
+	// Extract tool name and arguments
+	toolName, ok := req.Params["name"].(string)
 	if !ok {
-		params = make(map[string]interface{})
+		fmt.Fprintf(os.Stderr, "[DEBUG] handleToolsCallV2: missing or invalid tool name\n")
+		return s.createErrorResponse(req.ID, -32602, "Invalid params", "missing tool name"), nil
 	}
 
-	name, ok := req.Params["name"].(string)
+	arguments, ok := req.Params["arguments"].(map[string]interface{})
 	if !ok {
-		return s.createErrorResponse(req.ID, -32602, "Invalid params", "Missing tool name"), nil
+		fmt.Fprintf(os.Stderr, "[DEBUG] handleToolsCallV2: missing or invalid arguments\n")
+		return s.createErrorResponse(req.ID, -32602, "Invalid params", "missing arguments"), nil
 	}
 
-	s.mu.RLock()
-	handler, exists := s.handlers[name]
-	s.mu.RUnlock()
+	fmt.Fprintf(os.Stderr, "[DEBUG] handleToolsCallV2: calling tool '%s' with arguments %+v\n", toolName, arguments)
 
-	if !exists {
-		return s.createErrorResponse(req.ID, -32602, "Invalid params", fmt.Sprintf("Tool not found: %s", name)), nil
-	}
-
-	result, err := handler(s.ctx, params)
+	// Call the tool
+	result, err := s.callTool(toolName, arguments)
 	if err != nil {
-		// Map OData errors to appropriate MCP error codes and provide detailed context
-		errorCode, errorMessage, errorData := s.categorizeError(err, name)
-		return s.createErrorResponse(req.ID, errorCode, errorMessage, errorData), nil
+		fmt.Fprintf(os.Stderr, "[DEBUG] handleToolsCallV2: tool call failed: %v\n", err)
+		return s.createErrorResponse(req.ID, -32603, "Internal error", err.Error()), nil
 	}
 
+	fmt.Fprintf(os.Stderr, "[DEBUG] handleToolsCallV2: tool call succeeded, result type: %T\n", result)
+	fmt.Fprintf(os.Stderr, "[DEBUG] handleToolsCallV2: result: %+v\n", result)
+	
+	// Create response
 	response := map[string]interface{}{
 		"content": []map[string]interface{}{
 			{
@@ -328,8 +339,56 @@ func (s *Server) handleToolsCallV2(req *Request) (*transport.Message, error) {
 			},
 		},
 	}
+	
+	fmt.Fprintf(os.Stderr, "[DEBUG] handleToolsCallV2: creating response: %+v\n", response)
+	
+	// Create the transport message
+	transportResponse, err := s.createResponse(req.ID, response)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[DEBUG] handleToolsCallV2: createResponse failed: %v\n", err)
+		return s.createErrorResponse(req.ID, -32603, "Internal error", err.Error()), nil
+	}
+	
+	fmt.Fprintf(os.Stderr, "[DEBUG] handleToolsCallV2: transport response created successfully\n")
+	return transportResponse, nil
+}
 
-	return s.createResponse(req.ID, response)
+// callTool executes a tool by name with the given arguments
+func (s *Server) callTool(toolName string, arguments map[string]interface{}) (interface{}, error) {
+	fmt.Fprintf(os.Stderr, "[DEBUG] callTool: looking up tool '%s'\n", toolName)
+	
+	s.mu.RLock()
+	handler, exists := s.handlers[toolName]
+	s.mu.RUnlock()
+	
+	if !exists {
+		fmt.Fprintf(os.Stderr, "[DEBUG] callTool: tool '%s' not found\n", toolName)
+		return nil, fmt.Errorf("tool not found: %s", toolName)
+	}
+	
+	fmt.Fprintf(os.Stderr, "[DEBUG] callTool: found handler for tool '%s', executing...\n", toolName)
+	
+	// Execute the tool handler with panic recovery
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "[DEBUG] callTool: PANIC recovered: %v\n", r)
+		}
+	}()
+	
+	// Execute the tool handler
+	result, err := handler(s.ctx, arguments)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[DEBUG] callTool: handler execution failed: %v\n", err)
+		return nil, err
+	}
+	
+	fmt.Fprintf(os.Stderr, "[DEBUG] callTool: handler execution succeeded, result type: %T\n", result)
+	if result != nil {
+		fmt.Fprintf(os.Stderr, "[DEBUG] callTool: result value: %+v\n", result)
+	} else {
+		fmt.Fprintf(os.Stderr, "[DEBUG] callTool: result is nil\n")
+	}
+	return result, nil
 }
 
 // handlePingV2 handles the ping request for transport

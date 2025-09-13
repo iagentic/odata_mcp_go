@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -164,10 +165,13 @@ func (t *SSETransport) handleRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Fprintf(os.Stderr, "[DEBUG] handleRPC: received message method=%s, id=%v\n", msg.Method, msg.ID)
+
 	// Process the message
 	ctx := r.Context()
 	response, err := t.handler(ctx, &msg)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "[DEBUG] handleRPC: handler error: %v\n", err)
 		response = &transport.Message{
 			JSONRPC: "2.0",
 			ID:      msg.ID,
@@ -178,8 +182,23 @@ func (t *SSETransport) handleRPC(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	fmt.Fprintf(os.Stderr, "[DEBUG] handleRPC: response=%+v, err=%v\n", response, err)
+	if response != nil {
+		fmt.Fprintf(os.Stderr, "[DEBUG] handleRPC: response JSONRPC=%s, ID=%v, hasResult=%v, hasError=%v\n", 
+			response.JSONRPC, response.ID, response.Result != nil, response.Error != nil)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if response != nil {
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			fmt.Fprintf(os.Stderr, "[DEBUG] handleRPC: JSON encode error: %v\n", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "[DEBUG] handleRPC: response is nil, sending empty response\n")
+		// Send empty response if response is nil
+		w.WriteHeader(http.StatusOK)
+	}
 }
 
 // processMessages handles incoming messages from clients

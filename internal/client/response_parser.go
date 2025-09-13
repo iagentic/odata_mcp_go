@@ -3,19 +3,30 @@ package client
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 )
 
 // parseODataResponse parses OData responses, handling both v2 and v4 formats
 func parseODataResponse(data []byte, isV4 bool) (interface{}, error) {
+	// Debug: Log the raw response data
+	fmt.Fprintf(os.Stderr, "[DEBUG] parseODataResponse: data length=%d, isV4=%v\n", len(data), isV4)
+	if len(data) == 0 {
+		fmt.Fprintf(os.Stderr, "[DEBUG] parseODataResponse: EMPTY RESPONSE DATA\n")
+		return nil, fmt.Errorf("empty response data")
+	}
+	fmt.Fprintf(os.Stderr, "[DEBUG] parseODataResponse: raw data=%s\n", string(data))
+	
 	// Try to parse as a generic map first
 	var rawResponse map[string]interface{}
 	if err := json.Unmarshal(data, &rawResponse); err != nil {
+		fmt.Fprintf(os.Stderr, "[DEBUG] parseODataResponse: JSON unmarshal error: %v\n", err)
 		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
 	}
 
 	// Check for error response
 	if errorData, ok := rawResponse["error"]; ok {
+		fmt.Fprintf(os.Stderr, "[DEBUG] parseODataResponse: found error in response: %v\n", errorData)
 		return nil, parseODataError(errorData)
 	}
 

@@ -297,9 +297,11 @@ async def main(message: cl.Message):
         parsed_data = parse_json_data(result)
         
         if parsed_data:
+            print("parsed_data: ", parsed_data)
             df = create_dataframe(parsed_data)
             
             if df is not None and not df.empty:
+                print("df: ", df)
                 # Create enhanced data display using markdown
                 processing_msg.content = "📊 **Data retrieved successfully!**"
                 await processing_msg.update()

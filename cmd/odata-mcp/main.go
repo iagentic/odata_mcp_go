@@ -41,6 +41,7 @@ Examples:
   odata-mcp --user admin --password secret https://my-service.com/odata/
   odata-mcp --api-key W4P3bPnpzGGrAPXPl2DQGweAKQlAcKga https://sandbox.api.sap.com/sap/c4c/odata/v1/c4codataapi/
   odata-mcp --cookie-file cookies.txt https://my-service.com/odata/
+  odata-mcp --transport http --http-addr 0.0.0.0:8080 --insecure https://my-service.com/odata/
   
 Operation Filtering Examples:
   odata-mcp --disable "cud" https://example.com/odata/  # Disable create, update, delete
@@ -105,6 +106,7 @@ func init() {
 	// Transport options
 	rootCmd.Flags().String("transport", "stdio", "Transport type: 'stdio', 'http' (SSE), or 'streamable-http' (modern MCP)")
 	rootCmd.Flags().String("http-addr", "localhost:8080", "HTTP server address (used with --transport http/streamable-http, defaults to localhost only for security)")
+	rootCmd.Flags().Bool("insecure", false, "Allow non-localhost HTTP transport (shorthand for --i-am-security-expert-i-know-what-i-am-doing)")
 	rootCmd.Flags().Bool("i-am-security-expert-i-know-what-i-am-doing", false, "DANGEROUS: Allow non-localhost HTTP transport. MCP has no authentication!")
 
 	// Debug options
@@ -269,9 +271,10 @@ func runBridge(cmd *cobra.Command, args []string) error {
 	case "streamable-http", "streamable":
 		httpAddr, _ := cmd.Flags().GetString("http-addr")
 		expertMode, _ := cmd.Flags().GetBool("i-am-security-expert-i-know-what-i-am-doing")
+		insecureMode, _ := cmd.Flags().GetBool("insecure")
 
-		// Security check: ensure localhost-only unless expert mode
-		if !expertMode && !isLocalhostAddr(httpAddr) {
+		// Security check: ensure localhost-only unless expert mode or insecure mode
+		if !expertMode && !insecureMode && !isLocalhostAddr(httpAddr) {
 			fmt.Fprintf(os.Stderr, "\n⚠️  SECURITY WARNING ⚠️\n")
 			fmt.Fprintf(os.Stderr, "Streamable HTTP transport is UNPROTECTED - no authentication!\n")
 			fmt.Fprintf(os.Stderr, "For security, HTTP transport is restricted to localhost only.\n")
@@ -281,11 +284,12 @@ func runBridge(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "  --http-addr 127.0.0.1:8080\n")
 			fmt.Fprintf(os.Stderr, "  --http-addr [::1]:8080\n\n")
 			fmt.Fprintf(os.Stderr, "If you REALLY need to expose this service (DANGEROUS!), use:\n")
+			fmt.Fprintf(os.Stderr, "  --insecure\n")
 			fmt.Fprintf(os.Stderr, "  --i-am-security-expert-i-know-what-i-am-doing\n\n")
 			return fmt.Errorf("refusing to start unprotected HTTP transport on non-localhost address")
 		}
 
-		if expertMode && !isLocalhostAddr(httpAddr) {
+		if (expertMode || insecureMode) && !isLocalhostAddr(httpAddr) {
 			fmt.Fprintf(os.Stderr, "\n🚨 EXTREME SECURITY WARNING 🚨\n")
 			fmt.Fprintf(os.Stderr, "You are exposing an UNPROTECTED MCP service to the network!\n")
 			fmt.Fprintf(os.Stderr, "MCP has NO authentication mechanism - anyone can connect!\n")
@@ -299,13 +303,14 @@ func runBridge(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "[VERBOSE] Main endpoint: http://%s/mcp\n", httpAddr)
 			fmt.Fprintf(os.Stderr, "[VERBOSE] Health endpoint: http://%s/health\n", httpAddr)
 		}
-		trans = http.NewStreamableHTTP(httpAddr, handler, expertMode)
+		trans = http.NewStreamableHTTP(httpAddr, handler, expertMode || insecureMode)
 	case "http", "sse":
 		httpAddr, _ := cmd.Flags().GetString("http-addr")
 		expertMode, _ := cmd.Flags().GetBool("i-am-security-expert-i-know-what-i-am-doing")
+		insecureMode, _ := cmd.Flags().GetBool("insecure")
 
-		// Security check: ensure localhost-only unless expert mode
-		if !expertMode && !isLocalhostAddr(httpAddr) {
+		// Security check: ensure localhost-only unless expert mode or insecure mode
+		if !expertMode && !insecureMode && !isLocalhostAddr(httpAddr) {
 			fmt.Fprintf(os.Stderr, "\n⚠️  SECURITY WARNING ⚠️\n")
 			fmt.Fprintf(os.Stderr, "HTTP/SSE transport is UNPROTECTED - no authentication!\n")
 			fmt.Fprintf(os.Stderr, "For security, HTTP transport is restricted to localhost only.\n")
@@ -315,11 +320,12 @@ func runBridge(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "  --http-addr 127.0.0.1:8080\n")
 			fmt.Fprintf(os.Stderr, "  --http-addr [::1]:8080\n\n")
 			fmt.Fprintf(os.Stderr, "If you REALLY need to expose this service (DANGEROUS!), use:\n")
+			fmt.Fprintf(os.Stderr, "  --insecure\n")
 			fmt.Fprintf(os.Stderr, "  --i-am-security-expert-i-know-what-i-am-doing\n\n")
 			return fmt.Errorf("refusing to start unprotected HTTP transport on non-localhost address")
 		}
 
-		if expertMode && !isLocalhostAddr(httpAddr) {
+		if (expertMode || insecureMode) && !isLocalhostAddr(httpAddr) {
 			fmt.Fprintf(os.Stderr, "\n🚨 EXTREME SECURITY WARNING 🚨\n")
 			fmt.Fprintf(os.Stderr, "You are exposing an UNPROTECTED MCP service to the network!\n")
 			fmt.Fprintf(os.Stderr, "MCP has NO authentication mechanism - anyone can connect!\n")

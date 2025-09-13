@@ -131,6 +131,9 @@ class MCPOpenAIClient:
             return None
             
         try:
+            print(f"🔍 DEBUG: Calling tool: {tool_name}")
+            print(f"🔍 DEBUG: Arguments: {arguments}")
+            
             response = requests.post(
                 f"{self.mcp_server_url}/rpc",
                 headers={"Content-Type": "application/json"},
@@ -145,23 +148,38 @@ class MCPOpenAIClient:
                 }
             )
             
+            print(f"🔍 DEBUG: HTTP status code: {response.status_code}")
+            print(f"🔍 DEBUG: HTTP headers: {dict(response.headers)}")
+            
             if response.status_code != 200:
                 print(f"❌ Tool call failed: {response.status_code}")
+                print(f"❌ DEBUG: Error response body: {response.text}")
                 return None
                 
+            print(f"🔍 DEBUG: Raw response text: {repr(response.text)}")
+            print(f"🔍 DEBUG: Response text length: {len(response.text)}")
+            
             result = response.json()
+            print(f"🔍 DEBUG: Parsed JSON result: {result}")
+            
             if "error" in result:
                 print(f"❌ Tool call error: {result['error']}")
                 return None
                 
             # Extract text content from result
             content = result["result"]["content"]
+            print(f"🔍 DEBUG: Content from result: {content}")
+            
             if content and len(content) > 0:
                 return content[0]["text"]
             return None
             
         except Exception as e:
             print(f"❌ Tool call error: {e}")
+            print(f"❌ DEBUG: Exception type: {type(e)}")
+            if hasattr(e, 'response'):
+                print(f"❌ DEBUG: Response status: {e.response.status_code}")
+                print(f"❌ DEBUG: Response text: {e.response.text}")
             return None
     
     def get_tool_descriptions(self) -> str:
@@ -177,7 +195,7 @@ class MCPOpenAIClient:
     
     def query_with_openai(self, user_query: str, model: str = "gpt-4.1-mini") -> str:
         """Use OpenAI to process a natural language query and execute appropriate MCP tools"""
-        
+        # gpt-4.1-mini
         # Create system prompt with available tools
         system_prompt = f"""You are an AI assistant that can query OData services through MCP tools.
 
@@ -219,11 +237,19 @@ User query: {user_query}"""
             
             # Parse OpenAI response
             content = response.choices[0].message.content
+            print(f"🔍 DEBUG: OpenAI response content: {repr(content)}")
+            print(f"🔍 DEBUG: Content length: {len(content)}")
+            print(f"🔍 DEBUG: Content type: {type(content)}")
+            
             try:
                 # Try to parse as JSON
                 parsed = json.loads(content)
                 return self._execute_tool_plan(parsed)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                print(f"❌ DEBUG: JSON parsing error: {e}")
+                print(f"❌ DEBUG: Error at position: {e.pos}")
+                print(f"❌ DEBUG: Error line: {e.lineno}, column: {e.colno}")
+                print(f"❌ DEBUG: Raw content: {repr(content)}")
                 # If not JSON, try to extract tool information from text
                 return self._extract_and_execute_from_text(content, user_query)
                 

@@ -639,6 +639,14 @@ func (c *ODataClient) parseODataResponse(resp *http.Response) (*models.ODataResp
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	// Debug: Log the raw response
+	fmt.Fprintf(os.Stderr, "[DEBUG] parseODataResponse: HTTP status=%d, body length=%d\n", resp.StatusCode, len(body))
+	if len(body) == 0 {
+		fmt.Fprintf(os.Stderr, "[DEBUG] parseODataResponse: EMPTY HTTP RESPONSE BODY\n")
+		return &models.ODataResponse{}, nil
+	}
+	fmt.Fprintf(os.Stderr, "[DEBUG] parseODataResponse: raw body=%s\n", string(body))
+
 	if resp.StatusCode >= 400 {
 		return nil, c.parseErrorFromBody(body, resp.StatusCode)
 	}
