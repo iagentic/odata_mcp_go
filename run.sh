@@ -12,3 +12,5 @@
 # Or with the original expert flag:
 ./odata-mcp --api-key W4P3bPnpzGGrAPXPl2DQGweAKQlAcKga --transport http --http-addr 34.58.214.135:8080/ --i-am-security-expert-i-know-what-i-am-doing https://sandbox.api.sap.com/sap/c4c/odata/v1/c4codataapi
 
+ ./odata-mcp --api-key W4P3bPnpzGGrAPXPl2DQGweAKQlAcKga --transport http --http-addr 0.0.0.0:8080 --insecure https://sandbox.api.sap.com/sap/c4c/odat
+a/v1/c4codataapi

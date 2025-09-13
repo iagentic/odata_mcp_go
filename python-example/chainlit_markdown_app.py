@@ -182,7 +182,12 @@ def create_markdown_statistics(df: pd.DataFrame) -> str:
     return "\n".join(stats)
 
 def format_tool_info(tools: List) -> str:
-    """Format tool information for display"""
+    """Format tool information for display - optimized for large tool sets"""
+    # For large tool sets, just show counts without processing all tools
+    if len(tools) > 100:
+        return f"🔧 **Large tool set detected ({len(tools)} tools)**\n\n" \
+               f"All OData operations are available. Use natural language to query the service."
+    
     categories = {
         'filter': [],
         'count': [],
@@ -194,7 +199,10 @@ def format_tool_info(tools: List) -> str:
         'other': []
     }
     
-    for tool in tools:
+    # Process only first 50 tools to avoid performance issues
+    sample_tools = tools[:50]
+    
+    for tool in sample_tools:
         name = tool.name.lower()
         if 'filter' in name:
             categories['filter'].append(tool)
@@ -222,6 +230,10 @@ def format_tool_info(tools: List) -> str:
             if len(tools_list) > 3:
                 result.append(f"- ... and {len(tools_list) - 3} more")
             result.append("")
+    
+    # Add note if we sampled tools
+    if len(tools) > 50:
+        result.append(f"📝 **Note:** Showing sample of first 50 tools. All {len(tools)} tools are available for use.")
     
     return "\n".join(result)
 
@@ -256,21 +268,35 @@ async def start():
         await init_msg.update()
         return
     
-    # Show available tools
+    # Show tool count and status without sending all tool details
     tool_count = len(mcp_client.tools)
-    tool_info = format_tool_info(mcp_client.tools)
+    
+    # Only show sample tools if count is reasonable, otherwise just show status
+    if tool_count <= 50:
+        # Small tool set - show sample tools
+        tool_info = format_tool_info(mcp_client.tools)
+        tool_display = f"📊 **Loaded {tool_count} tools** from the OData service\n\n{tool_info}"
+    else:
+        # Large tool set - just show count and status
+        tool_display = f"📊 **Loaded {tool_count} tools** from the OData service\n\n"
+        tool_display += f"🔧 **Tool Categories Available:**\n"
+        tool_display += f"• **Filter/List Operations** - Query and filter data\n"
+        tool_display += f"• **Get Operations** - Retrieve specific records\n"
+        tool_display += f"• **Search Operations** - Full-text search\n"
+        tool_display += f"• **Count Operations** - Get record counts\n"
+        tool_display += f"• **Create/Update/Delete** - Modify data (if enabled)\n\n"
     
     init_msg.content = (
         f"✅ **Connected successfully!**\n\n"
-        f"📊 **Loaded {tool_count} tools** from the OData service\n\n"
-        f"{tool_info}"
+        f"{tool_display}"
         f"💬 **Try asking questions like:**\n"
-        f"- \"Show me the first 5 products\"\n"
-        f"- \"Find products with price less than 20\"\n"
-        f"- \"Get information about categories\"\n"
-        f"- \"How many products are there?\"\n"
-        f"- \"Show me products from the Beverages category\"\n"
-        f"- \"Create a table of products with their prices\""
+        f"- \"Show me the first 5 contacts\"\n"
+        f"- \"Find accounts with revenue greater than 100000\"\n"
+        f"- \"Get information about leads\"\n"
+        f"- \"How many contacts are there?\"\n"
+        f"- \"Show me contacts from the Sales team\"\n"
+        f"- \"Create a table of accounts with their details\"\n"
+        f"- \"Search for contacts with email containing 'gmail'\""
     )
     await init_msg.update()
 
