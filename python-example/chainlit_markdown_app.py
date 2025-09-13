@@ -17,8 +17,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Global client instance
+# Global client instance - initialized once at app startup
 mcp_client: Optional[MCPOpenAIClient] = None
+mcp_initialized: bool = False
 
 def parse_json_data(data_str: str) -> Optional[Dict]:
     """Parse JSON data from OData response"""
@@ -237,35 +238,56 @@ def format_tool_info(tools: List) -> str:
     
     return "\n".join(result)
 
+def initialize_mcp_once():
+    """Initialize MCP client once at app startup"""
+    global mcp_client, mcp_initialized
+    
+    if mcp_initialized:
+        return True
+    
+    try:
+        # Check for OpenAI API key
+        if not os.getenv('OPENAI_API_KEY'):
+            print("❌ OpenAI API key required! Set OPENAI_API_KEY environment variable.")
+            return False
+        
+        # Create MCP client
+        mcp_client = MCPOpenAIClient()
+        
+        # Initialize MCP connection
+        print("🔄 Initializing MCP connection...")
+        if mcp_client.initialize_mcp():
+            print(f"✅ MCP initialized successfully with {len(mcp_client.tools)} tools")
+            mcp_initialized = True
+            return True
+        else:
+            print("❌ Failed to initialize MCP connection")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error initializing MCP: {e}")
+        return False
+
+# Initialize MCP at module import time (app startup)
+print("🚀 Starting Chainlit app...")
+if not initialize_mcp_once():
+    print("⚠️  MCP initialization failed. App will show error messages to users.")
+
 @cl.on_chat_start
 async def start():
     """Initialize the chat session"""
-    global mcp_client
+    global mcp_client, mcp_initialized
     
-    # Check for OpenAI API key
-    if not os.getenv('OPENAI_API_KEY'):
+    # Check if MCP was initialized at app startup
+    if not mcp_initialized or not mcp_client:
         await cl.Message(
-            content="❌ **OpenAI API key required!**\n\n"
-                   "Please set the `OPENAI_API_KEY` environment variable or provide it in the settings."
+            content="❌ **MCP server not available!**\n\n"
+                   "The OData MCP server connection failed during app startup.\n"
+                   "Please check the server logs and ensure the MCP server is running:\n"
+                   "```bash\n"
+                   "./odata-mcp --transport http --insecure https://your-odata-service/\n"
+                   "```"
         ).send()
-        return
-    
-    # Create MCP client
-    mcp_client = MCPOpenAIClient()
-    
-    # Initialize MCP connection
-    init_msg = cl.Message(content="🔄 **Initializing connection to OData MCP server...**")
-    await init_msg.send()
-    
-    if not mcp_client.initialize_mcp():
-        init_msg.content = (
-            "❌ **Failed to connect to MCP server!**\n\n"
-            "Please ensure the OData MCP server is running:\n"
-            "```bash\n"
-            "./odata-mcp --transport http https://services.odata.org/V2/Northwind/Northwind.svc/\n"
-            "```"
-        )
-        await init_msg.update()
         return
     
     # Show tool count and status without sending all tool details
@@ -286,28 +308,29 @@ async def start():
         tool_display += f"• **Count Operations** - Get record counts\n"
         tool_display += f"• **Create/Update/Delete** - Modify data (if enabled)\n\n"
     
-    init_msg.content = (
-        f"✅ **Connected successfully!**\n\n"
-        f"{tool_display}"
-        f"💬 **Try asking questions like:**\n"
-        f"- \"Show me the first 5 contacts\"\n"
-        f"- \"Find accounts with revenue greater than 100000\"\n"
-        f"- \"Get information about leads\"\n"
-        f"- \"How many contacts are there?\"\n"
-        f"- \"Show me contacts from the Sales team\"\n"
-        f"- \"Create a table of accounts with their details\"\n"
-        f"- \"Search for contacts with email containing 'gmail'\""
+    # Create and send the welcome message
+    welcome_msg = cl.Message(
+        content=f"✅ **Connected successfully!**\n\n"
+                f"{tool_display}"
+                f"💬 **Try asking questions like:**\n"
+                f"- \"Show me the first 5 contacts\"\n"
+                f"- \"Find accounts with revenue greater than 100000\"\n"
+                f"- \"Get information about leads\"\n"
+                f"- \"How many contacts are there?\"\n"
+                f"- \"Show me contacts from the Sales team\"\n"
+                f"- \"Create a table of accounts with their details\"\n"
+                f"- \"Search for contacts with email containing 'gmail'\""
     )
-    await init_msg.update()
+    await welcome_msg.send()
 
 @cl.on_message
 async def main(message: cl.Message):
     """Handle incoming messages"""
-    global mcp_client
+    global mcp_client, mcp_initialized
     
-    if not mcp_client or not mcp_client.initialized:
+    if not mcp_initialized or not mcp_client:
         await cl.Message(
-            content="❌ **Client not initialized!** Please restart the chat."
+            content="❌ **MCP server not available!** Please check server status."
         ).send()
         return
     
